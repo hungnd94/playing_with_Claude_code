@@ -3,7 +3,10 @@
 // This is the *specification* of the CPU. The gate-level circuit in cpu.js
 // must agree with step() below on every cycle (see test/cpu.test.js).
 
-export const CLS_ALU = 0, CLS_LD = 1, CLS_ST = 2, CLS_J = 3;
+export const CLS_ALU = 0;
+export const CLS_LD = 1;
+export const CLS_ST = 2;
+export const CLS_J = 3;
 
 export const ALU_OPS = [
   'add', 'sub', 'slt', 'sltu',

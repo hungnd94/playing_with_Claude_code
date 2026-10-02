@@ -1,0 +1,319 @@
+<title>All the Way Down</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,300..900&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+/* Layout: a lab bench. The running screen and the live die photo sit side by
+   side; below them the layers in between, numbered by depth. Dark silicon,
+   die-region tints, amber phosphor. Deliberately single-theme (dark). */
+:root {
+  --bg: #100e14;          /* silicon */
+  --panel: #18151e;       /* raised panel */
+  --well: #0b0a0e;        /* recessed wells: screen, die, code */
+  --line: #2b2633;        /* hairlines */
+  --fg: #ece6f2;          /* lilac white */
+  --muted: #9b93a8;
+  --faint: #6c6578;
+  --amber: #ffb547;       /* phosphor + accent */
+  --amber-dim: #8a5a1c;
+  --copper: #d98c4a;
+  --teal: #45c2b0;
+  --violet: #a983f5;
+  --rose: #e5738f;
+  --display: "Archivo", "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
+  --body: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { background: var(--bg); color: var(--fg); }
+body { font-family: var(--body); font-size: 15px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+.wrap { max-width: 1240px; margin: 0 auto; padding-inline: 20px; padding-block: 28px 64px; display: flex; flex-direction: column; gap: 28px; }
+a { color: var(--amber); }
+button, select, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+
+/* ---------- masthead */
+.masthead { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 12px 40px; align-items: end; }
+.masthead h1 {
+  margin: 0; font-family: var(--display); font-weight: 850; font-stretch: 125%;
+  font-size: clamp(38px, 6.4vw, 78px); line-height: 0.92; letter-spacing: -0.01em; text-wrap: balance;
+}
+.masthead h1 span { display: block; color: var(--amber); }
+.lede { margin: 0; color: var(--muted); font-size: 16.5px; max-width: 62ch; text-wrap: pretty; }
+.lede b { color: var(--fg); font-weight: 600; font-variant-numeric: tabular-nums; }
+.eyebrow { grid-column: 1 / -1; margin: 0; font-family: var(--mono); font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--faint); }
+
+/* ---------- depth labels */
+.depth { display: inline-flex; align-items: baseline; gap: 10px; margin: 0; font-family: var(--display); font-stretch: 112%; font-weight: 700; font-size: 15px; letter-spacing: 0.02em; }
+.depth i { font-style: normal; font-family: var(--mono); font-weight: 500; font-size: 11px; letter-spacing: 0.12em; color: var(--well); background: var(--amber); padding: 1px 6px 0; border-radius: 2px; }
+.depth small { font-family: var(--mono); font-weight: 400; font-size: 11.5px; letter-spacing: 0.06em; color: var(--faint); text-transform: uppercase; }
+
+/* ---------- bench */
+.bench { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.12fr); gap: 20px; align-items: start; }
+.col { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.bezel {
+  position: relative; background: var(--well); border: 1px solid var(--line); border-radius: 10px; padding: 14px;
+  box-shadow: inset 0 0 0 1px #00000080, inset 0 18px 40px #00000070;
+}
+.bezel:focus-visible { outline: 2px solid var(--amber); }
+.bezel.focused { border-color: var(--amber-dim); }
+#screen { display: block; width: 100%; aspect-ratio: 4 / 3; image-rendering: pixelated; image-rendering: crisp-edges; border-radius: 4px; background: #000; }
+.bezel::after { /* faint scanlines */
+  content: ""; position: absolute; inset: 14px; border-radius: 4px; pointer-events: none;
+  background: repeating-linear-gradient(180deg, #ffffff06 0 1px, transparent 1px 3px);
+}
+#bootlog {
+  position: absolute; inset: 14px; margin: 0; padding: 14px 16px; overflow: hidden; border-radius: 4px;
+  font-family: var(--mono); font-size: clamp(10px, 1.25vw, 13px); line-height: 1.55; color: var(--amber);
+  background: #0c0905; white-space: pre-wrap; transition: opacity 0.6s ease;
+}
+#bootlog .t { color: var(--amber-dim); }
+#bootlog.gone { opacity: 0; pointer-events: none; }
+.hint { position: absolute; right: 16px; bottom: -1px; font-family: var(--mono); font-size: 10px; line-height: 14px; color: var(--faint); pointer-events: none; transition: opacity 0.3s; }
+.bezel.focused .hint { opacity: 0; }
+
+.toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; background: var(--panel); }
+.seg button { border: 0; background: transparent; padding: 7px 12px; cursor: pointer; font-size: 13.5px; color: var(--muted); white-space: nowrap; }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button:hover { color: var(--fg); background: #ffffff08; }
+.seg button[aria-pressed="true"], .seg button[aria-selected="true"] { color: var(--well); background: var(--amber); font-weight: 600; }
+.seg.small button { padding: 5px 9px; font-family: var(--mono); font-size: 12px; }
+.btn { border: 1px solid var(--line); background: var(--panel); border-radius: 7px; padding: 7px 12px; cursor: pointer; font-size: 13.5px; }
+.btn:hover { border-color: var(--amber-dim); }
+.clock { display: inline-flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; color: var(--faint); }
+
+.pad { display: none; gap: 8px; justify-content: center; }
+.pad.on { display: flex; }
+.pad button { width: 52px; height: 44px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); font-size: 18px; touch-action: manipulation; }
+.pad button.wide { width: auto; padding: 0 14px; font-size: 13px; }
+.pad button:active { background: var(--amber); color: var(--well); }
+
+.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+.stat { padding: 9px 12px; min-width: 0; }
+.stat + .stat { border-left: 1px solid var(--line); }
+.stat b { display: block; font-family: var(--mono); font-weight: 500; font-size: 17px; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stat span { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--faint); white-space: nowrap; }
+
+/* ---------- die */
+.die-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 12px; }
+.crumbs { display: flex; flex-wrap: wrap; gap: 2px; font-family: var(--mono); font-size: 12px; color: var(--faint); }
+.crumbs button { border: 0; background: none; padding: 1px 3px; cursor: pointer; color: var(--muted); font-family: inherit; font-size: inherit; }
+.crumbs button:hover { color: var(--amber); }
+.crumbs button:last-child { color: var(--fg); cursor: default; }
+.crumbs i { font-style: normal; color: var(--faint); }
+.die-frame { position: relative; background: var(--well); border: 1px solid var(--line); border-radius: 10px; padding: 8px; }
+.die-box { position: relative; width: 100%; aspect-ratio: 1 / 0.86; }
+#die, #die-ink { position: absolute; inset: 0; width: 100%; height: 100%; }
+#die { image-rendering: pixelated; image-rendering: crisp-edges; cursor: zoom-in; }
+#die-ink { pointer-events: none; }
+#die-tip {
+  position: absolute; z-index: 2; pointer-events: none; max-width: min(360px, 90%); padding: 7px 9px; border-radius: 6px;
+  background: #0d0b10f2; border: 1px solid var(--line); font-family: var(--mono); font-size: 11.5px; line-height: 1.45; color: var(--fg);
+}
+#die-tip em { font-style: normal; color: var(--amber); }
+.caption { margin: 0; color: var(--muted); font-size: 13.5px; text-wrap: pretty; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
+
+/* ---------- layers */
+.layers { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr) minmax(0, 0.9fr); gap: 20px; align-items: start; }
+.layer { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.layer p.note { margin: 0; color: var(--muted); font-size: 13.5px; text-wrap: pretty; }
+.well { background: var(--well); border: 1px solid var(--line); border-radius: 8px; min-width: 0; }
+.code { font-family: var(--mono); font-size: 12px; line-height: 1.6; height: 420px; overflow: auto; padding: 8px 0; }
+.code .ln { display: grid; grid-template-columns: 30px 3.4em minmax(0, 1fr); align-items: center; white-space: pre; padding-right: 10px; }
+.code .ln .no { color: var(--faint); text-align: right; padding-right: 8px; font-size: 10.5px; }
+.code .ln .heat { height: 8px; border-radius: 1px; background: var(--amber); opacity: 0; margin-right: 8px; }
+.code .ln.cur { background: #ffb54724; box-shadow: inset 2px 0 0 var(--amber); }
+.code .ln .tx { overflow: hidden; text-overflow: ellipsis; }
+.code .kw { color: var(--violet); }
+.code .cm { color: var(--faint); }
+.code .num { color: var(--teal); }
+.code .str { color: var(--rose); }
+.code .lbl { color: var(--amber); }
+.asm .ln { grid-template-columns: 42px minmax(0, 1fr); }
+.asm .ln .no { font-size: 10.5px; }
+textarea#editor {
+  width: 100%; height: 420px; resize: vertical; border: 0; border-radius: 8px; padding: 10px 12px; background: var(--well);
+  font-family: var(--mono); font-size: 12px; line-height: 1.6; color: var(--fg); tab-size: 2; white-space: pre; overflow: auto;
+}
+.edit-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.err { margin: 0; font-family: var(--mono); font-size: 12px; color: var(--rose); min-height: 1.4em; }
+.where { font-family: var(--mono); font-size: 12px; color: var(--muted); min-height: 1.5em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.where b { color: var(--amber); font-weight: 500; }
+
+.cpu { padding: 12px; display: flex; flex-direction: column; gap: 12px; font-family: var(--mono); font-size: 12.5px; }
+.bits { display: flex; flex-wrap: wrap; gap: 6px; }
+.bits span { display: inline-flex; flex-direction: column; align-items: center; gap: 2px; }
+.bits b { font-weight: 500; font-size: 14px; letter-spacing: 0.06em; padding: 2px 4px; border-radius: 3px; background: #ffffff0a; }
+.bits small { font-size: 9.5px; letter-spacing: 0.1em; color: var(--faint); text-transform: uppercase; }
+.dis { font-size: 14px; color: var(--amber); }
+.regs { display: grid; grid-template-columns: auto 1fr auto; gap: 3px 12px; font-variant-numeric: tabular-nums; }
+.regs .rn { color: var(--faint); }
+.regs .hx { color: var(--fg); }
+.regs .dc { color: var(--muted); text-align: right; }
+.regs .chg { color: var(--amber); }
+
+/* ---------- bottom turtle */
+.bottom { display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); gap: 20px 40px; align-items: start; border-top: 1px solid var(--line); padding-top: 28px; }
+.nand-demo { display: flex; flex-wrap: wrap; gap: 18px; align-items: center; }
+.nand-demo svg { width: 230px; max-width: 100%; height: auto; }
+.nand-demo .pin { cursor: pointer; }
+table.tt { border-collapse: collapse; font-family: var(--mono); font-size: 13px; }
+table.tt th, table.tt td { padding: 3px 12px; text-align: center; border-bottom: 1px solid var(--line); }
+table.tt th { color: var(--faint); font-weight: 500; }
+table.tt tr.on td { color: var(--amber); }
+.stack { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; border-top: 1px solid var(--line); }
+.stack li { display: grid; grid-template-columns: 2.2em 10em minmax(0, 1fr); gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+.stack li b { font-weight: 600; }
+.stack li .n { font-family: var(--mono); color: var(--amber); font-size: 12px; padding-top: 2px; }
+.stack li span:last-child { color: var(--muted); }
+.stack code { font-family: var(--mono); font-size: 12.5px; color: var(--fg); }
+.foot { color: var(--faint); font-size: 12.5px; margin: 0; }
+
+@media (max-width: 980px) {
+  .masthead, .bench, .layers, .bottom { grid-template-columns: minmax(0, 1fr); }
+  .code, textarea#editor { height: 340px; }
+}
+@media (max-width: 560px) {
+  .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .stat:nth-child(3) { border-left: 0; }
+  .stat:nth-child(n+3) { border-top: 1px solid var(--line); }
+  .stack li { grid-template-columns: 2em minmax(0, 1fr); }
+  .stack li span:last-child { grid-column: 2; }
+  .wrap { padding-inline: 16px; }
+}
+@media (prefers-reduced-motion: reduce) { #bootlog { transition: none; } }
+</style>
+
+<main class="wrap">
+  <header class="masthead">
+    <p class="eyebrow">16-bit computer · nothing but NAND gates</p>
+    <h1>All the Way <span>Down</span></h1>
+    <p class="lede">A computer built from <b id="lede-gates">several thousand</b> NAND gates and nothing else, wired and simulated gate by gate inside this page. The screen shows a program running on it. Under the screen is every layer below: the program, the machine code, the processor, the gates, and the one gate they are all made of.</p>
+  </header>
+
+  <section class="bench" aria-label="The running computer">
+    <div class="col">
+      <h2 class="depth"><i>1</i> The screen <small id="mode-label">256 × 192 mono</small></h2>
+      <div class="bezel" id="bezel" tabindex="0" aria-label="Computer screen. Focus it to send arrow keys, space and enter.">
+        <canvas id="screen" width="256" height="192"></canvas>
+        <pre id="bootlog" aria-live="polite"></pre>
+        <div class="hint" id="hint">click the screen to use your keyboard</div>
+      </div>
+      <div class="toolbar">
+        <div class="seg" role="tablist" aria-label="Programs" id="progs"></div>
+        <div class="seg" aria-label="Run controls">
+          <button id="run" aria-pressed="true" title="Run or pause the clock">Running</button>
+          <button id="step" title="Advance exactly one clock cycle">Step</button>
+        </div>
+      </div>
+      <div class="toolbar">
+        <div class="clock"><span>CLOCK</span>
+          <div class="seg small" id="clock" aria-label="Clock speed">
+            <button data-hz="0" aria-pressed="true">max</button>
+            <button data-hz="10000">10 kHz</button>
+            <button data-hz="100">100 Hz</button>
+            <button data-hz="2">2 Hz</button>
+          </div>
+        </div>
+        <button class="btn" id="reset">Reset</button>
+      </div>
+      <div class="pad" id="pad" aria-label="Game keys">
+        <button data-key="1" aria-label="Left">←</button>
+        <button data-key="4" aria-label="Rotate">↻</button>
+        <button data-key="2" aria-label="Right">→</button>
+        <button data-key="8" aria-label="Down">↓</button>
+        <button data-key="16" class="wide">Drop</button>
+        <button data-key="32" class="wide">Play</button>
+      </div>
+      <div class="stats" aria-label="Machine statistics">
+        <div class="stat"><b id="st-clock">–</b><span>clock rate</span></div>
+        <div class="stat"><b id="st-cycles">0</b><span>clock cycles</span></div>
+        <div class="stat"><b id="st-evals">–</b><span>switches / s</span></div>
+        <div class="stat"><b id="st-fn">–</b><span>in function</span></div>
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="die-head">
+        <h2 class="depth"><i>5</i> The gates <small id="die-count"></small></h2>
+        <nav class="crumbs" id="crumbs" aria-label="Zoom path"></nav>
+      </div>
+      <div class="die-frame">
+        <div class="die-box" id="die-box">
+          <canvas id="die"></canvas>
+          <canvas id="die-ink"></canvas>
+          <div id="die-tip" hidden></div>
+        </div>
+      </div>
+      <div class="legend" id="legend"></div>
+      <p class="caption" id="die-caption">Every NAND gate of the processor, grouped by the circuit that contains it. A lit gate outputs 1; a white flash means it just switched. Click a block to zoom in. Small blocks open as a schematic with live wires.</p>
+    </div>
+  </section>
+
+  <section class="layers" aria-label="The layers in between">
+    <article class="layer">
+      <h2 class="depth"><i>2</i> The program <small id="prog-file">tetris.tt</small></h2>
+      <p class="note">Written in Turtle, a small C-like language. This page compiled it a moment ago, with a compiler that assigns registers by graph colouring. The bar beside each line shows where the processor spends its time.</p>
+      <div class="where" id="where">&nbsp;</div>
+      <div class="well code" id="src" tabindex="0" aria-label="Program source"></div>
+      <textarea id="editor" spellcheck="false" hidden aria-label="Edit the program"></textarea>
+      <div class="edit-bar">
+        <button class="btn" id="edit">Edit this program</button>
+        <button class="btn" id="compile" hidden>Compile and run</button>
+        <button class="btn" id="revert" hidden>Discard changes</button>
+      </div>
+      <p class="err" id="err" role="status"></p>
+    </article>
+    <article class="layer">
+      <h2 class="depth"><i>3</i> The machine code <small id="asm-size"></small></h2>
+      <p class="note">The compiler's output: N16 assembly. Every line is one instruction, and every instruction takes exactly one clock cycle.</p>
+      <div class="well code asm" id="asm" tabindex="0" aria-label="Assembly"></div>
+    </article>
+    <article class="layer">
+      <h2 class="depth"><i>4</i> The processor <small>N16</small></h2>
+      <p class="note">Sixteen bits, eight registers, one cycle per instruction. These values are read straight from the flip-flops.</p>
+      <div class="well cpu" id="cpu"></div>
+    </article>
+  </section>
+
+  <section class="bottom" aria-label="The NAND gate">
+    <div class="layer">
+      <h2 class="depth"><i>6</i> The NAND gate <small>the bottom</small></h2>
+      <p class="note">Its output is 0 only when both inputs are 1. That is the whole rule. The adders, the multiplier, the register file and every program above are this gate, repeated. Click the inputs.</p>
+      <div class="nand-demo">
+        <svg viewBox="0 0 230 120" role="img" aria-label="A NAND gate with two inputs">
+          <g fill="none" stroke-width="3" stroke-linecap="round">
+            <line id="wa" x1="14" y1="40" x2="74" y2="40"/>
+            <line id="wb" x1="14" y1="80" x2="74" y2="80"/>
+            <line id="wq" x1="166" y1="60" x2="216" y2="60"/>
+          </g>
+          <path d="M74 22 H112 A38 38 0 0 1 112 98 H74 Z" fill="var(--panel)" stroke="var(--fg)" stroke-width="2.5"/>
+          <circle cx="157" cy="60" r="7" fill="var(--panel)" stroke="var(--fg)" stroke-width="2.5"/>
+          <g class="pin" id="pa" tabindex="0" role="button" aria-label="Toggle input A"><circle cx="14" cy="40" r="11" fill="var(--panel)" stroke="var(--line)"/><text id="ta" x="14" y="44.5" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="13" fill="var(--fg)">1</text></g>
+          <g class="pin" id="pb" tabindex="0" role="button" aria-label="Toggle input B"><circle cx="14" cy="80" r="11" fill="var(--panel)" stroke="var(--line)"/><text id="tb" x="14" y="84.5" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="13" fill="var(--fg)">1</text></g>
+          <text id="tq" x="222" y="64.5" text-anchor="end" font-family="IBM Plex Mono, monospace" font-size="13" fill="var(--fg)" dx="8">0</text>
+        </svg>
+        <table class="tt" id="tt" aria-label="NAND truth table">
+          <thead><tr><th>A</th><th>B</th><th>A NAND B</th></tr></thead>
+          <tbody>
+            <tr data-r="0"><td>0</td><td>0</td><td>1</td></tr>
+            <tr data-r="1"><td>0</td><td>1</td><td>1</td></tr>
+            <tr data-r="2"><td>1</td><td>0</td><td>1</td></tr>
+            <tr data-r="3"><td>1</td><td>1</td><td>0</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="layer">
+      <h2 class="depth"><i>↑</i> Built in this page, bottom up <small id="boot-total"></small></h2>
+      <ul class="stack" id="stack"></ul>
+      <p class="foot">The processor is checked cycle by cycle against a behavioural specification on random programs, and the compiler against a reference on thousands of random expressions. The flip-flops are simulated as primitives for speed; an 11-NAND flip-flop is proven equivalent in the test suite.</p>
+    </div>
+  </section>
+</main>
+<!--BUNDLE-->
