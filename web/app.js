@@ -2,8 +2,8 @@
 
 import { buildCPU } from '../src/cpu.js';
 import { optimize } from '../src/netlist.js';
-import { buildWasm, WasmMachine } from '../src/wasm.js';
-import { Interpreter } from '../src/sim.js';
+import { buildWasm, WasmMachine, planBlocks, DEFAULT_BLOCKS } from '../src/wasm.js';
+import { Interpreter, FastMachine } from '../src/sim.js';
 import { build } from '../src/toolchain.js';
 import { loadImage } from '../src/asm.js';
 import { disassemble, decode, IO_FRAME, IO_KEYS, IO_RANDOM, IO_MODE } from '../src/isa.js';
@@ -61,8 +61,15 @@ async function boot() {
   await sleep(60);
   const t3s = performance.now();
   const bytes = buildWasm(nl);
-  const { instance } = await WebAssembly.instantiate(bytes, {});
-  log(`netlist -> ${(bytes.length / 1024).toFixed(0)} KB of WebAssembly`, performance.now() - t3s);
+  let machine;
+  try {
+    const { instance } = await WebAssembly.instantiate(bytes, {});
+    machine = new WasmMachine(nl, instance);
+    log(`netlist -> ${(bytes.length / 1024).toFixed(0)} KB of WebAssembly`, performance.now() - t3s);
+  } catch (e) {
+    machine = new FastMachine(nl, planBlocks, DEFAULT_BLOCKS);
+    log('WebAssembly is blocked here: using the JavaScript gate evaluator (slower)', performance.now() - t3s);
+  }
   await sleep(60);
   for (const [file] of PROGRAM_ORDER) {
     const [p, tc] = timed(() => build(PROGRAMS[file], { lib: PROGRAMS['lib.tt'], name: file }));
@@ -72,7 +79,7 @@ async function boot() {
   }
   S.circuit = circuit;
   S.nl = nl;
-  S.machine = new WasmMachine(nl, instance);
+  S.machine = machine;
   S.interp = new Interpreter(nl, S.machine.mems);
   S.heat = new Float32Array(nl.size);
   S.prev = new Uint8Array(nl.size);

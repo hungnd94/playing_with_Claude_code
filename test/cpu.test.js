@@ -3,7 +3,7 @@
 // every program-counter value, for random programs.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { rng } from './helpers.js';
+import { rng, randomProgram, randomWord } from './helpers.js';
 import { buildCPU } from '../src/cpu.js';
 import { optimize, flatten } from '../src/netlist.js';
 import { Interpreter } from '../src/sim.js';
@@ -12,18 +12,6 @@ import { Emulator } from '../src/isa.js';
 
 const circuit = buildCPU();
 const netlist = optimize(circuit);
-
-/** A ROM full of random code: wherever a jump lands, there is something to run. */
-export function randomProgram(rand) {
-  const rom = new Uint16Array(65536);
-  for (let i = 0; i < rom.length; i++) rom[i] = (rand() * 65536) | 0;
-  return rom;
-}
-
-const SPECIAL = [0, 0, 0, 0x7fff, 0xffff, 0xfffe, 15, ...Array.from({ length: 16 }, (_, k) => 1 << k)];
-export function randomWord(rand) {
-  return rand() < 0.4 ? SPECIAL[(rand() * SPECIAL.length) | 0] : (rand() * 65536) | 0;
-}
 
 function randomRam(rand) {
   const ram = new Uint16Array(65536);

@@ -161,3 +161,102 @@ export class Machine {
     return x;
   }
 }
+
+/**
+ * A fast pure-JavaScript gate evaluator: the fallback when WebAssembly is
+ * unavailable. Gates are evaluated from flat typed arrays in topological
+ * order, and blocks whose inputs did not change are skipped exactly, as in
+ * the wasm backend. Same interface as WasmMachine.
+ */
+export class FastMachine {
+  constructor(nl, planBlocks, blockPaths = []) {
+    this.nl = nl;
+    this.mems = { rom: new Uint16Array(65536), ram: new Uint16Array(65536) };
+    this.state = new Int32Array(nl.dffs.length);
+    this.v = new Uint8Array(nl.size);
+    this.v[1] = 1;
+    this.cycles = 0;
+    const { blocks, placed } = planBlocks(nl, blockPaths);
+    // segments: runs of always-evaluated gates, memory reads, guarded blocks
+    const segs = [];
+    let run = [];
+    const flush = () => { if (run.length) { segs.push({ k: 'gates', gates: Int32Array.from(run) }); run = []; } };
+    const after = new Map();
+    for (const b of blocks) {
+      if (!after.has(b.maxIn)) after.set(b.maxIn, []);
+      after.get(b.maxIn).push(b);
+    }
+    const emitBlocks = (n) => {
+      for (const b of after.get(n) || []) {
+        flush();
+        segs.push({ k: 'block', gates: Int32Array.from(b.gates), inputs: Int32Array.from(b.inputs), prev: new Int8Array(b.inputs.length).fill(-1) });
+      }
+    };
+    emitBlocks(1);
+    for (let n = 2; n < nl.size; n++) {
+      const k = nl.kind[n];
+      if (k === K_NAND) { if (placed[n] < 0) run.push(n); }
+      else if (k === K_MEM && nl.in1[n] === 0) { flush(); segs.push({ k: 'mem', port: nl.readPorts[nl.in0[n]] }); }
+      emitBlocks(n);
+    }
+    flush();
+    this.segs = segs;
+    this.dffQ = Int32Array.from(nl.dffs.map((f) => f.q));
+    this.dffD = Int32Array.from(nl.dffs.map((f) => f.d));
+    this.next = new Uint8Array(nl.dffs.length);
+    this.reset();
+  }
+
+  reset() {
+    this.nl.dffs.forEach((f, i) => { this.state[i] = f.init; });
+    for (const s of this.segs) if (s.k === 'block') s.prev.fill(-1);
+    this.cycles = 0;
+  }
+
+  run(cycles) {
+    const { nl, v, segs, state, dffQ, dffD, next, mems } = this;
+    const A = nl.in0, B = nl.in1;
+    for (let c = 0; c < cycles; c++) {
+      for (let i = 0; i < dffQ.length; i++) v[dffQ[i]] = state[i];
+      for (let si = 0; si < segs.length; si++) {
+        const s = segs[si];
+        if (s.k === 'gates') {
+          const g = s.gates;
+          for (let i = 0; i < g.length; i++) { const n = g[i]; v[n] = 1 ^ (v[A[n]] & v[B[n]]); }
+        } else if (s.k === 'mem') {
+          const p = s.port;
+          let addr = 0;
+          for (let i = 0; i < p.addr.length; i++) addr |= v[p.addr[i]] << i;
+          const w = mems[p.mem][addr];
+          for (let i = 0; i < p.data.length; i++) v[p.data[i]] = (w >> i) & 1;
+        } else {
+          const inp = s.inputs, prev = s.prev;
+          let changed = false;
+          for (let i = 0; i < inp.length; i++) { const x = v[inp[i]]; if (x !== prev[i]) { prev[i] = x; changed = true; } }
+          if (changed) {
+            const g = s.gates;
+            for (let i = 0; i < g.length; i++) { const n = g[i]; v[n] = 1 ^ (v[A[n]] & v[B[n]]); }
+          }
+        }
+      }
+      for (const p of nl.writePorts) {
+        if (v[p.we]) {
+          let addr = 0, data = 0;
+          for (let i = 0; i < p.addr.length; i++) addr |= v[p.addr[i]] << i;
+          for (let i = 0; i < p.data.length; i++) data |= v[p.data[i]] << i;
+          mems[p.mem][addr] = data;
+        }
+      }
+      for (let i = 0; i < dffD.length; i++) next[i] = v[dffD[i]];
+      for (let i = 0; i < dffD.length; i++) state[i] = next[i];
+    }
+    this.cycles += cycles;
+  }
+
+  reg(name) {
+    const bus = this.nl.probes.get(name);
+    let x = 0;
+    bus.forEach((n, i) => { x |= (this.state[this.nl.in0[n]] & 1) << i; });
+    return x;
+  }
+}
