@@ -84,6 +84,8 @@ button, select, textarea { font: inherit; color: inherit; }
 .btn:hover { border-color: var(--amber-dim); }
 .clock { display: inline-flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; color: var(--faint); }
 
+.blurb { margin: 0; color: var(--muted); font-size: 13.5px; text-wrap: pretty; min-height: 2.9em; }
+.blurb b { color: var(--fg); font-weight: 600; }
 .pad { display: none; gap: 8px; justify-content: center; }
 .pad.on { display: flex; }
 .pad button { width: 52px; height: 44px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); font-size: 18px; touch-action: manipulation; }
@@ -222,6 +224,7 @@ table.tt tr.on td { color: var(--amber); }
         </div>
         <button class="btn" id="reset">Reset</button>
       </div>
+      <p class="blurb" id="blurb"></p>
       <div class="pad" id="pad" aria-label="Game keys">
         <button data-key="1" aria-label="Left">←</button>
         <button data-key="4" aria-label="Rotate">↻</button>

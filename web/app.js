@@ -25,6 +25,12 @@ const PROGRAM_ORDER = [
   ['hello.tt', 'Hello'],
 ];
 const MONO = [0x120b04, 0xffb547];
+const BLURBS = {
+  'tetris.tt': 'The computer plays until you press <b>Enter</b>. Its AI tries every drop and scores the board by height, holes and bumpiness, all computed from bit masks.',
+  'life.tt': 'Conway\'s Life, 16 cells per instruction with bit-sliced adders. Life is Turing-complete: glider streams can be arranged into NAND gates. So these are <b>NAND gates simulating a universe that can build NAND gates</b>.',
+  'mandel.tt': 'The Mandelbrot set in 4.12 fixed point, one hardware multiply per square, then palette cycling and zooms. A frame takes a few million clock cycles.',
+  'hello.tt': 'The first program that ran on this processor: text, the sixteen colours, and signed numbers in decimal.',
+};
 
 // ------------------------------------------------------------------ state
 const S = window.__atwd = {
@@ -137,6 +143,7 @@ function loadProgram(file) {
   S.prevRegs.fill(0);
   for (const b of $('progs').children) b.setAttribute('aria-selected', String(b.dataset.file === file));
   $('pad').classList.toggle('on', file === 'tetris.tt');
+  $('blurb').innerHTML = S.edited[file] ? 'Your edited version of this program, compiled in this page.' : BLURBS[file] || '';
   $('prog-file').textContent = file + (S.edited[file] ? ' (edited)' : '');
   $('asm-size').textContent = `${fmt(p.image.romSize)} words of ROM`;
   setEditing(false);

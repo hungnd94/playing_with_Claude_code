@@ -56,3 +56,27 @@ export function randomWord(rand) {
   return rand() < 0.4 ? SPECIAL[(rand() * SPECIAL.length) | 0] : (rand() * 65536) | 0;
 }
 
+
+/**
+ * Directed programs: every jump condition tested on edge-case register
+ * values (zero, each single bit, all ones...). Returns [{ rom, ram }].
+ */
+export function branchPrograms() {
+  const values = [0, 0xffff, 0x7fff, 0x8000, 0x8001, 1, 15, 16];
+  for (let k = 0; k < 16; k++) values.push(1 << k, 0xffff ^ (1 << k));
+  const progs = [];
+  for (const v of values) {
+    const rom = new Uint16Array(65536);
+    let pc = 0;
+    // li r1, v   (add r1, r0, #v)
+    rom[pc++] = 0x8000 | (1 << 9); rom[pc++] = v;
+    for (let f = 0; f < 8; f++) {
+      // j<f> r2, r1, +3 : link into r2, jump over the next instruction if taken
+      rom[pc] = 0x8000 | (3 << 13) | (2 << 9) | (1 << 6) | f; rom[pc + 1] = pc + 3; pc += 2;
+      rom[pc++] = 0x0000 | (3 << 9) | (3 << 6) | (2 << 3); // add r3, r3, r2 (only when not taken)
+    }
+    rom[pc] = 0x8000 | (3 << 13) | 4; rom[pc + 1] = pc; // halt
+    progs.push({ rom, ram: new Uint16Array(65536), cycles: 30 });
+  }
+  return progs;
+}

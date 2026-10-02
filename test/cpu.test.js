@@ -3,7 +3,7 @@
 // every program-counter value, for random programs.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { rng, randomProgram, randomWord } from './helpers.js';
+import { rng, randomProgram, randomWord, branchPrograms } from './helpers.js';
 import { buildCPU } from '../src/cpu.js';
 import { optimize, flatten } from '../src/netlist.js';
 import { Interpreter } from '../src/sim.js';
@@ -85,4 +85,20 @@ test('gate counts', () => {
   const s = circuit.stats();
   assert.ok(s.nands > 5000 && s.dffs === 128, JSON.stringify(s));
   assert.ok(netlist.gateCount() < s.nands);
+});
+
+test('every jump condition on edge-case values (directed)', () => {
+  const machine = createMachineSync(netlist);
+  for (const { rom, ram, cycles } of branchPrograms()) {
+    const emu = new Emulator(rom, ram.slice());
+    machine.reset();
+    machine.mems.rom.set(rom);
+    machine.mems.ram.set(ram);
+    for (let c = 0; c < cycles; c++) {
+      emu.step();
+      machine.run(1);
+      assert.equal(machine.reg('pc'), emu.pc);
+      for (let r = 1; r < 8; r++) assert.equal(machine.reg(`r${r}`), emu.r[r]);
+    }
+  }
 });
