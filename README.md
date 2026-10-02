@@ -11,7 +11,7 @@ A computer built from nothing but NAND gates — and everything above it.
       to WebAssembly: one wasm instruction sequence per gate, ~1.7 million clock cycles per second.
 - [x] **Verification** — the gate-level CPU is differentially tested against the ISA spec (`src/isa.js`)
       on random programs; a flip-flop built from 11 NANDs is shown to match the flip-flop primitive.
-- [ ] Assembler
+- [x] **Assembler** — `src/asm.js`: two-pass, labels, constant expressions, pseudo-ops, RAM data section, source-line mapping.
 - [ ] Compiler
 - [ ] Programs
 - [ ] Browser front-end
