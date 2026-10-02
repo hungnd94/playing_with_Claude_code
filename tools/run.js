@@ -23,7 +23,12 @@ const keyScript = (opt('keys', '') || '').split(',').filter(Boolean).map((s) => 
 
 const here = path.dirname(new URL(import.meta.url).pathname);
 const lib = fs.readFileSync(path.join(here, '../programs/lib.tt'), 'utf8');
-const prog = build(fs.readFileSync(file, 'utf8'), { lib, name: path.basename(file) });
+const libs = [{ name: 'lib.tt', text: lib }];
+if (path.basename(file) === 'itself.tt') {
+  const { innerNetlist, innerSource } = await import('../src/selfsim.js');
+  libs.push({ name: 'netlist.tt', text: innerSource(innerNetlist()) });
+}
+const prog = build(fs.readFileSync(file, 'utf8'), { libs, name: path.basename(file) });
 console.log(`ROM: ${prog.image.romSize} words, data ends at 0x${prog.image.dataEnd.toString(16)}`);
 
 let rom, ram, step;
@@ -56,4 +61,6 @@ for (let f = 0; f < frames; f++) {
 }
 const dt = (performance.now() - t0) / 1000;
 console.log(`${frames} frames, ${(frames * cyclesPerFrame / 1e6).toFixed(1)}M cycles in ${dt.toFixed(2)}s`);
+const ic = prog.image.labels.get('g_inner_cycles');
+if (ic !== undefined) console.log(`inner machine: ${ram[ic]} cycles, ${(ram[ic] / (frames * cyclesPerFrame) * 1.3e6).toFixed(1)} inner Hz at 1.3 MHz`);
 if (pngOut && !every) shot(pngOut);

@@ -10,6 +10,7 @@ import { disassemble, decode, Emulator, IO_FRAME, IO_KEYS, IO_RANDOM, IO_MODE, I
 import { render } from '../src/display.js';
 import { K_NAND, K_DFF, K_MEM } from '../src/hdl.js';
 import { PROGRAMS } from './programs.js';
+import { innerNetlist, innerSource } from '../src/selfsim.js';
 
 const $ = (id) => document.getElementById(id);
 const fmt = (n) => n.toLocaleString('en-US');
@@ -22,6 +23,7 @@ const PROGRAM_ORDER = [
   ['tetris.tt', 'Tetris'],
   ['life.tt', 'Life'],
   ['mandel.tt', 'Mandelbrot'],
+  ['itself.tt', 'Itself'],
   ['hello.tt', 'Hello'],
 ];
 const MONO = [0x120b04, 0xffb547];
@@ -29,6 +31,7 @@ const BLURBS = {
   'tetris.tt': 'The computer plays until you press <b>Enter</b>. Its AI tries every drop and scores the board by height, holes and bumpiness, all computed from bit masks.',
   'life.tt': 'Conway\'s Life, 16 cells per instruction with bit-sliced adders. Life is Turing-complete: glider streams can be arranged into NAND gates. So these are <b>NAND gates simulating a universe that can build NAND gates</b>.',
   'mandel.tt': 'The Mandelbrot set in 4.12 fixed point, one hardware multiply per square, then palette cycling and zooms. A frame takes a few million clock cycles.',
+  'itself.tt': 'A gate-level simulator written in Turtle, running a smaller copy of this processor: 2,140 NAND gates, no multiplier. Its wires live in video memory, so <b>the screen is the inner processor</b>, one dash per wire, at about 40 inner clock cycles a second.',
   'hello.tt': 'The first program that ran on this processor: text, the sixteen colours, and signed numbers in decimal.',
 };
 
@@ -77,8 +80,12 @@ async function boot() {
     log('WebAssembly is blocked here: using the JavaScript gate evaluator (slower)', performance.now() - t3s);
   }
   await sleep(60);
+  const [inner, ti] = timed(() => innerNetlist());
+  S.innerSource = innerSource(inner);
+  log(`inner processor for itself.tt: ${fmt(inner.gateCount())} gates`, ti);
+  await sleep(40);
   for (const [file] of PROGRAM_ORDER) {
-    const [p, tc] = timed(() => build(PROGRAMS[file], { lib: PROGRAMS['lib.tt'], name: file }));
+    const [p, tc] = timed(() => buildProgram(file, PROGRAMS[file]));
     S.programs[file] = p;
     log(`turtle compiler: ${file} -> ${fmt(p.image.romSize)} words`, tc);
     await sleep(40);
@@ -121,6 +128,12 @@ function consumersOf(nl) {
 }
 
 // ------------------------------------------------------------------ programs
+function buildProgram(file, text) {
+  const libs = [{ name: 'lib.tt', text: PROGRAMS['lib.tt'] }];
+  if (file === 'itself.tt') libs.push({ name: 'netlist.tt', text: S.innerSource });
+  return build(text, { libs, name: file });
+}
+
 function buildTabs() {
   const box = $('progs');
   box.innerHTML = '';
@@ -945,6 +958,7 @@ function fillStack(stats, nl, wasmBytes) {
     ['5', 'Assembler', 'two passes, labels, constant expressions, a source map back to each line'],
     ['6', 'Turtle compiler', 'parser, register allocation by graph colouring, spilling, peephole cleanup'],
     ['7', 'Programs', `a standard library with a pixel font, then Tetris with an AI (${fmt(tetris.image.romSize)} words), bit-sliced Life, fixed-point Mandelbrot`],
+    ['8', 'The machine again', 'a gate-level simulator written in Turtle, running a smaller N16 on this one: NAND gates simulating NAND gates'],
   ];
   $('stack').innerHTML = rows.map(([n, a, b]) => `<li><span class="n">${n}</span><b>${a}</b><span>${b}</span></li>`).join('');
 }
@@ -1105,7 +1119,7 @@ $('compile').addEventListener('click', () => {
   const file = S.current;
   const text = $('editor').value;
   try {
-    const p = build(text, { lib: PROGRAMS['lib.tt'], name: file });
+    const p = buildProgram(file, text);
     S.programs[file] = p;
     S.edited[file] = text;
     loadProgram(file);
@@ -1117,7 +1131,7 @@ $('compile').addEventListener('click', () => {
 $('revert').addEventListener('click', () => {
   const file = S.current;
   delete S.edited[file];
-  S.programs[file] = build(PROGRAMS[file], { lib: PROGRAMS['lib.tt'], name: file });
+  S.programs[file] = buildProgram(file, PROGRAMS[file]);
   loadProgram(file);
 });
 $('editor').addEventListener('keydown', (e) => {

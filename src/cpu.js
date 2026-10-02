@@ -92,7 +92,7 @@ const Multiplier = chip('Multiplier', (c, A, B) => {
  *   10 shift:      8 SHL, 9 SHR, 10 SRA, (11 = SRA)
  *   11 multiply:  12 MUL, 13 MULH, (14 = MUL, 15 = MULH)
  */
-export const ALU = chip('ALU', (c, A, B, F) => {
+export const ALU = chip('ALU', (c, A, B, F, { multiply = true, shift = true } = {}) => {
   const [f0, f1, f2, f3] = F;
 
   const arith = c.scoped('Arith', () => {
@@ -119,15 +119,19 @@ export const ALU = chip('ALU', (c, A, B, F) => {
     const isLogic = And(c, nf3, f2), isShift = And(c, f3, nf2), isMul = And(c, f3, f2);
     return {
       logic: { A: gate(isLogic, A), B: gate(isLogic, B), f: gate(isLogic, [f0, f1]) },
-      shift: { A: gate(isShift, A), amt: gate(isShift, B.slice(0, 4)), f: gate(isShift, [f0, f1]) },
-      mul: { A: gate(isMul, A), B: gate(isMul, B) },
+      shift: shift && { A: gate(isShift, A), amt: gate(isShift, B.slice(0, 4)), f: gate(isShift, [f0, f1]) },
+      mul: multiply && { A: gate(isMul, A), B: gate(isMul, B) },
     };
   });
 
+  const zero = A.map(() => 0);
   const logic = LogicUnit(c, iso.logic.A, iso.logic.B, iso.logic.f[0], iso.logic.f[1]);
-  const shifted = Shifter(c, iso.shift.A, iso.shift.amt,
-    Or(c, iso.shift.f[0], iso.shift.f[1]), iso.shift.f[1]);
-  const prod = Multiplier(c, iso.mul.A, iso.mul.B);
+  // A "lite" processor (used as the machine inside the machine) can leave
+  // out the shifter and multiplier; those instructions then return 0.
+  const shifted = shift
+    ? Shifter(c, iso.shift.A, iso.shift.amt, Or(c, iso.shift.f[0], iso.shift.f[1]), iso.shift.f[1])
+    : zero;
+  const prod = multiply ? Multiplier(c, iso.mul.A, iso.mul.B) : { lo: zero, hi: zero };
 
   return c.scoped('Result', () => {
     const mul = Mux16(c, prod.lo, prod.hi, f0);
@@ -139,7 +143,7 @@ export const ALU = chip('ALU', (c, A, B, F) => {
 
 // ------------------------------------------------------------------- CPU
 
-export function buildCPU() {
+export function buildCPU(options = {}) {
   const c = new Circuit('N16');
 
   // ---- state: program counter and the register file
@@ -184,7 +188,7 @@ export function buildCPU() {
   const Bop = c.scoped('OperandB', () => Mux16(c, RB, lit, dec.L));
 
   // ---- execute
-  const result = ALU(c, RA, Bop, dec.F);
+  const result = ALU(c, RA, Bop, dec.F, options);
 
   // ---- memory: address is always the ALU result; store data comes from RB
   const memData = c.scoped('Memory', () => {

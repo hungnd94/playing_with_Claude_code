@@ -1,0 +1,101 @@
+// itself.tt — this processor, simulated gate by gate, by this processor.
+//
+// The tables ga, gb and sched (generated from the netlist of a smaller copy
+// of N16 without the multiplier and shifter) describe every NAND gate of that
+// copy. This program walks them once per clock cycle of the inner machine.
+//
+// The inner machine's wires live in video memory: net n is the word at V + n,
+// 0 for a 0 and HI (a dash with a gap at each end) for a 1. So the screen is
+// the inner processor itself. Each dash is one wire. The first eight rows are its flip-flops: the program
+// counter, then registers r1 to r7, bit 0 on the left.
+
+const V = SCREEN - 2;       // net 2, the first flip-flop, is the first word on screen
+const HI = 0x7FFE;          // how a 1 looks: a 14-pixel dash
+var latch[128];
+var inner_ram[256];
+var inner_cycles = 0;
+
+// value of a 16-net bus (bit k from net list[k])
+fn bus(list) {
+  var w = 0;
+  for (var k = 15; k >= 0; k--) { w = (w << 1) | ((mem[V + list[k]] >>> 1) & 1); }
+  return w;
+}
+
+// drive 16 consecutive nets from a word
+fn drive(n0, w) {
+  for (var k = 0; k < 16; k++) { mem[V + n0 + k] = -((w >>> k) & 1) & HI; }
+}
+
+// one clock cycle of the inner machine
+fn cycle() {
+  var hi = HI;
+  var i = 0;
+  while (sched[i] != 2) {
+    if (sched[i] == 0) {
+      // a run of NAND gates, in topological order
+      var n = sched[i + 1];
+      var e = sched[i + 2];
+      while (n < e) {
+        mem[V + n] = hi & ~(mem[V + ga[n]] & mem[V + gb[n]]);   // NAND
+        n++;
+      }
+    } else {
+      // a memory read port: address nets in, data nets out
+      var p = sched[i + 1];
+      var a = bus(port_addr + p * 16) & 255;
+      var w = inner_rom[a];
+      if (port_mem[p]) { w = inner_ram[a]; }
+      drive(sched[i + 2], w);
+    }
+    i += 3;
+  }
+  // the clock edge: memory write, then every flip-flop takes its input
+  if (mem[V + IN_WE]) { inner_ram[bus(wp_addr) & 255] = bus(wp_data); }
+  for (var f = 0; f < IN_DFFS; f++) { latch[f] = mem[V + dff_d[f]]; }
+  for (var g = 0; g < IN_DFFS; g++) { mem[V + 2 + g] = latch[g]; }
+  inner_cycles++;
+}
+
+fn hex(x, y, v) {
+  for (var k = 3; k >= 0; k--) {
+    var d = (v >>> (k * 4)) & 15;
+    var ch = '0' + d;
+    if (d > 9) { ch = 'A' + d - 10; }
+    char(x, y, ch, 1);
+    x += 4;
+  }
+}
+
+fn clear_text_row(y) {
+  for (var i = y * 16; i < (y + 6) * 16; i++) { mem[SCREEN + i] = 0; }
+}
+
+// value held by a row of inner flip-flops: 0 is the PC, 1..7 are r1..r7
+fn flipflops(r) {
+  var v = 0;
+  for (var k = 15; k >= 0; k--) { v = (v << 1) | ((mem[SCREEN + r * 16 + k] >>> 1) & 1); }
+  return v;
+}
+
+fn main() {
+  mono_mode();
+  cls(0);
+  mem[V + IN_ZERO] = 0;
+  mem[V + IN_ONE] = HI;
+  text(0, 150, "THIS SCREEN IS THE INSIDE OF A SMALLER N16 PROCESSOR.", 1);
+  text(0, 157, "EACH DASH IS ONE WIRE BETWEEN ITS NAND GATES. ROW 1 IS", 1);
+  text(0, 164, "ITS PC, ROWS 2-8 ARE R1-R7, THE REST ARE ITS GATES.", 1);
+  text(0, 178, "INNER", 1);
+  text(24, 178, "PC", 1);
+  for (var r = 1; r <= 4; r++) { text(24 + r * 32, 178, "R", 1); char(28 + r * 32, 178, '0' + r, 1); }
+  text(184, 178, "CYCLE", 1);
+  while (true) {
+    cycle();
+    if (inner_cycles & 3) { continue; }    // the readout is slow to draw: every 4th cycle
+    clear_text_row(185);
+    hex(24, 185, flipflops(0));
+    for (var reg = 1; reg <= 4; reg++) { hex(24 + reg * 32, 185, flipflops(reg)); }
+    number(184, 185, inner_cycles, 1);
+  }
+}

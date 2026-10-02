@@ -16,12 +16,17 @@ export class BuildError extends Error {
  * Returns { image, asm, files, lineInfo(pc), functionAt(pc) }.
  * Compile errors are thrown as BuildError with file-relative line numbers.
  */
-export function build(source, { lib = '', name = 'program.tt', libName = 'lib.tt' } = {}) {
-  const libLines = lib ? lib.split('\n').length : 0;
-  const full = lib ? `${lib}\n${source}` : source;
-  const files = lib
-    ? [{ name: libName, first: 1, count: libLines, text: lib }, { name, first: libLines + 1, count: source.split('\n').length, text: source }]
-    : [{ name, first: 1, count: source.split('\n').length, text: source }];
+export function build(source, { lib = '', libs = null, name = 'program.tt', libName = 'lib.tt' } = {}) {
+  // preludes (the standard library, generated tables...) come first
+  const parts = [...(libs || (lib ? [{ name: libName, text: lib }] : [])), { name, text: source }];
+  const files = [];
+  let first = 1;
+  for (const p of parts) {
+    const count = p.text.split('\n').length;
+    files.push({ name: p.name, first, count, text: p.text });
+    first += count;
+  }
+  const full = parts.map((p) => p.text).join('\n');
   const locate = (l) => {
     for (const f of files) if (l >= f.first && l < f.first + f.count) return { file: f.name, line: l - f.first + 1 };
     return null;

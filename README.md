@@ -32,6 +32,7 @@ schematic of nine NAND gates with live signals on the wires.
 | 5 | Compiler | **Turtle**, a little C-like language, with a graph-colouring register allocator | `src/compiler.js`, `src/backend.js` |
 | 6 | Library | Pixels, a 3×5 font, text and numbers, keyboard, timing, xorshift random numbers, in Turtle | `programs/lib.tt` |
 | 7 | Programs | Tetris with an AI, bit-sliced Game of Life, fixed-point Mandelbrot | `programs/*.tt` |
+| 8 | The machine again | A gate-level simulator in Turtle, running a smaller N16 on top of N16 | `programs/itself.tt`, `src/selfsim.js` |
 | 8 | Page | Boots all of the above in the browser and lets you look inside | `web/`, `tools/build.js` |
 
 ### The processor
@@ -116,6 +117,18 @@ biased colouring and cost-based spilling. On the Game of Life kernel it cut the 
 |------|------------|
 | ![Game of Life with glider guns](docs/life.png) | ![The Mandelbrot set](docs/mandelbrot.png) |
 
+### All the way down, literally
+
+- **Itself** (`itself.tt`): a gate-level simulator written in Turtle. `src/selfsim.js` builds a smaller N16
+  (2,140 NAND gates, without the multiplier and shifter) and hands its netlist to the program as tables. The
+  program walks them once per inner clock cycle, about 40 times a second, while the inner processor runs a
+  little Fibonacci program. The inner machine's wires are stored in video memory, so **the screen is the
+  inner processor**: each dash is one wire, the top rows are its program counter and registers. Next to it, the
+  page's die map shows the outer gates doing the simulating. A test checks the inner registers against the
+  specification, cycle by cycle.
+
+![Left: the screen, which is a simulated processor. Right: the gates simulating it](docs/itself.png)
+
 ## How do we know it works?
 
 ```
@@ -166,7 +179,8 @@ src/compiler.js   Turtle: lexer, parser, constant folding, program layout
 src/backend.js    Turtle code generation and register allocation
 src/toolchain.js  source -> image, with a source map
 src/display.js    the video device
-programs/         lib.tt, tetris.tt, life.tt, mandel.tt, hello.tt
+src/selfsim.js    the inner processor's netlist, as Turtle tables
+programs/         lib.tt, tetris.tt, life.tt, mandel.tt, itself.tt, hello.tt
 web/              the page and its script
 tools/            bundler, headless runner, PNG encoder
 test/             the test suite
