@@ -1,0 +1,137 @@
+// lib.tt — the Turtle standard library.
+// Video, text, keyboard, timing and random numbers, written in Turtle itself.
+
+// ---- memory-mapped hardware
+const SCREEN = 0xC000;     // default video memory (3072 words)
+const IO_MODE = 0xFFF0;    // 0: 256x192 mono, 1: 128x96 sixteen colours
+const IO_KEYS = 0xFFF1;    // held keys, bitmask of K_*
+const IO_FRAME = 0xFFF2;   // counts up 60 times a second
+const IO_RANDOM = 0xFFF3;  // a random word from the host
+const IO_VBASE = 0xFFF4;   // where the display reads video memory from
+
+const K_LEFT = 1;
+const K_RIGHT = 2;
+const K_UP = 4;
+const K_DOWN = 8;
+const K_FIRE = 16;
+const K_ENTER = 32;
+
+// colours (the PICO-8 palette)
+const BLACK = 0; const NAVY = 1; const PURPLE = 2; const GREEN = 3;
+const BROWN = 4; const GREY = 5; const SILVER = 6; const WHITE = 7;
+const RED = 8; const ORANGE = 9; const YELLOW = 10; const LIME = 11;
+const BLUE = 12; const LAVENDER = 13; const PINK = 14; const PEACH = 15;
+
+var vram = SCREEN;
+
+// 3x5 pixel font for ASCII 32..95, one word per glyph (bit = row * 3 + col)
+var font[] = {
+  0, 8338, 45, 24445, 15518, 21157, 27306, 18, 8778, 10530, 2728, 1488, 5120, 448, 8192, 4772,
+  31599, 29850, 29671, 31143, 18925, 31183, 31695, 9511, 31727, 31215, 1040, 5136, 17492, 3640, 5393, 8359,
+  25578, 23530, 15083, 25166, 15211, 29391, 4815, 27470, 23533, 29847, 11044, 23277, 29257, 23549, 23403, 11114,
+  4843, 26474, 23275, 14478, 9367, 31597, 11117, 24557, 23213, 9389, 29351, 12875, 18569, 26918, 42, 28672,
+};
+var numbuf[8];
+var rand_state = 0xACE1;
+
+// ---- input, time, randomness
+fn keys() { return mem[IO_KEYS]; }
+
+fn wait_frame() {
+  var f = mem[IO_FRAME];
+  while (mem[IO_FRAME] == f) { }
+}
+
+fn wait_frames(n) { while (n > 0) { wait_frame(); n -= 1; } }
+
+fn randomize() { rand_state = mem[IO_RANDOM] | 1; }
+
+// xorshift16: a fast pseudo-random generator
+fn rand() {
+  var x = rand_state;
+  x ^= x << 7;
+  x ^= x >>> 9;
+  x ^= x << 8;
+  rand_state = x;
+  return x;
+}
+
+fn random(n) { return (rand() >>> 1) % n; }
+
+// ---- video
+fn color_mode() { mem[IO_MODE] = 1; }
+fn mono_mode() { mem[IO_MODE] = 0; }
+fn show(addr) { mem[IO_VBASE] = addr; }
+fn draw_to(addr) { vram = addr; }
+
+fn cls(c) {
+  var w = 0;
+  if (mem[IO_MODE]) { w = (c & 15) * 0x1111; } else if (c) { w = -1; }
+  var p = vram;
+  for (var i = 0; i < 3072; i += 1) { p[i] = w; }
+}
+
+// colour pixel, 128 x 96
+fn pset(x, y, c) {
+  if ((x | y) < 0 || x >= 128 || y >= 96) { return; }
+  var a = vram + (y << 5) + (x >> 2);
+  var sh = (x & 3) << 2;
+  mem[a] = (mem[a] & ~(15 << sh)) | ((c & 15) << sh);
+}
+
+fn pget(x, y) {
+  if ((x | y) < 0 || x >= 128 || y >= 96) { return 0; }
+  return (mem[vram + (y << 5) + (x >> 2)] >>> ((x & 3) << 2)) & 15;
+}
+
+// mono pixel, 256 x 192
+fn mset(x, y, on) {
+  if ((x | y) < 0 || x >= 256 || y >= 192) { return; }
+  var a = vram + (y << 4) + (x >> 4);
+  var bit = 1 << (x & 15);
+  if (on) { mem[a] = mem[a] | bit; } else { mem[a] = mem[a] & ~bit; }
+}
+
+fn plot(x, y, c) {
+  if (mem[IO_MODE]) { pset(x, y, c); } else { mset(x, y, c); }
+}
+
+fn rect(x, y, w, h, c) {
+  for (var j = 0; j < h; j++) {
+    for (var i = 0; i < w; i++) { plot(x + i, y + j, c); }
+  }
+}
+
+// ---- text
+fn char(x, y, ch, c) {
+  if (ch >= 'a' && ch <= 'z') { ch -= 32; }
+  var g = 0;
+  if (ch >= 32 && ch < 96) { g = font[ch - 32]; }
+  for (var r = 0; r < 5; r++) {
+    if (g & 1) { plot(x, y + r, c); }
+    if (g & 2) { plot(x + 1, y + r, c); }
+    if (g & 4) { plot(x + 2, y + r, c); }
+    g = g >>> 3;
+  }
+}
+
+// Draws a 0-terminated string; returns the x after it.
+fn text(x, y, s, c) {
+  var i = 0;
+  while (s[i]) { char(x, y, s[i], c); x += 4; i++; }
+  return x;
+}
+
+// Draws a signed decimal number; returns the x after it.
+fn number(x, y, n, c) {
+  if (n < 0) {
+    char(x, y, '-', c);
+    x += 4;
+    if (n == -32768) { return text(x, y, "32768", c); }
+    n = -n;
+  }
+  var len = 0;
+  do { numbuf[len] = n % 10; n = n / 10; len++; } while (n > 0);
+  while (len > 0) { len--; char(x, y, '0' + numbuf[len], c); x += 4; }
+  return x;
+}

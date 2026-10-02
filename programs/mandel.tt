@@ -1,0 +1,82 @@
+// mandel.tt — the Mandelbrot set, in 4.12 fixed point, with palette cycling.
+//
+// Each pixel iterates z = z^2 + c. Squares use the CPU's signed multiplier:
+// mulh(a, b) is the high half of the 32-bit product, so with both operands
+// pre-shifted left by 2, mulh gives (a * b) >> 12: a 4.12 fixed-point multiply
+// in a single clock cycle.
+
+const MAXIT = 60;
+const ONE = 4096;                 // 1.0 in 4.12 fixed point
+
+// a 15-colour gradient through the palette (0 = black = inside the set)
+var grad[] = { NAVY, PURPLE, RED, ORANGE, YELLOW, LIME, GREEN, BLUE, LAVENDER, PINK, PEACH, WHITE, SILVER, GREY, BROWN };
+var nextc[16];                    // colour -> the next colour along the gradient
+var cyc[256];                     // two pixels -> both advanced one step
+
+fn iterate(cx, cy) {
+  var zx = 0;
+  var zy = 0;
+  var n = 0;
+  while (n < MAXIT) {
+    // escape if |zx| or |zy| >= 2 (keeps the fixed-point maths in range)
+    if (((zx + 2 * ONE) | (zy + 2 * ONE)) >>> 14) { return n; }
+    var sx = zx << 2;
+    var sy = zy << 2;
+    var x2 = mulh(sx, sx);
+    var y2 = mulh(sy, sy);
+    if (x2 + y2 > 4 * ONE) { return n; }
+    zy = (mulh(sx, sy) << 1) + cy;  // 2 zx zy + cy
+    zx = x2 - y2 + cx;              // zx^2 - zy^2 + cx
+    n++;
+  }
+  return MAXIT;
+}
+
+fn render(x0, y0, step) {
+  var cy = y0;
+  for (var y = 0; y < 96; y++) {
+    var cx = x0;
+    for (var x = 0; x < 128; x++) {
+      var n = iterate(cx, cy);
+      var c = BLACK;
+      if (n < MAXIT) { c = grad[n % 15]; }
+      pset(x, y, c);
+      cx += step;
+    }
+    cy += step;
+  }
+}
+
+fn init_cycling() {
+  for (var i = 0; i < 15; i++) { nextc[grad[i]] = grad[(i + 1) % 15]; }
+  nextc[BLACK] = BLACK;
+  for (var b = 0; b < 256; b++) { cyc[b] = nextc[b & 15] | (nextc[b >>> 4] << 4); }
+}
+
+// advance every coloured pixel one step along the gradient
+fn cycle_palette() {
+  for (var i = 0; i < 3072; i++) {
+    var w = mem[SCREEN + i];
+    mem[SCREEN + i] = cyc[w & 255] | (cyc[w >>> 8] << 8);
+  }
+}
+
+// centre (cx, cy) and width, all in 4.12 fixed point
+fn view(cx, cy, width) {
+  var step = width / 128;
+  render(cx - 64 * step, cy - 48 * step, step);
+  text(1, 1, "MANDELBROT", WHITE);
+  for (var f = 0; f < 240; f++) { cycle_palette(); wait_frame(); }
+}
+
+fn main() {
+  color_mode();
+  init_cycling();
+  cls(BLACK);
+  while (true) {
+    view(-3072, 0, 14336);        // the whole set: centre -0.75, width 3.5
+    view(-7250, 0, 492);          // a baby Mandelbrot on the antenna: -1.77, width 0.12
+    view(-655, 4239, 328);        // filaments near -0.16 + 1.035i, width 0.08
+    view(-492, 3482, 2867);       // the period-3 bulb: -0.12 + 0.85i, width 0.7
+  }
+}

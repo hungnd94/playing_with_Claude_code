@@ -1,0 +1,129 @@
+// life.tt — Conway's Game of Life on the full 256 x 192 screen.
+//
+// Sixteen cells are updated at once: each 16-bit word holds 16 cells, and
+// the neighbour counts are computed with bit-sliced adders (AND/XOR/OR on
+// whole words). Two passes per generation:
+//   1. horizontal: add every cell to its left and right neighbours, giving a
+//      2-bit count per cell, stored as two bit-planes (h0 = ones, h1 = twos)
+//   2. vertical: add the counts of the rows above, at and below. That is the
+//      population of the 3x3 block around each cell. A cell is alive in the
+//      next generation if the block holds 3, or holds 4 and the cell is alive.
+// The world wraps around at the edges (a torus): the planes have a ghost row
+// above and below that mirrors the opposite edge.
+
+const W = 16;           // words per row
+const H = 192;          // rows
+const N = 3072;         // words per screen
+const BUF_A = 0xC000;
+const BUF_B = 0x8000;
+
+var h0[N + 2 * W];      // [ghost row | 192 rows | ghost row]
+var h1[N + 2 * W];
+var alive[N];
+
+fn hsum(src) {
+  var i = 0;
+  while (i < N) {
+    var first = src[i];
+    var prev = src[i + W - 1];
+    var cur = first;
+    var end = i + W - 1;
+    while (i < end) {
+      var nxt = src[i + 1];
+      var l = (cur << 1) | (prev >>> 15);   // left neighbours
+      var r = (cur >>> 1) | (nxt << 15);    // right neighbours
+      var x = l ^ cur;
+      h0[i + W] = x ^ r;                    // ones of l + cur + r
+      h1[i + W] = (l & cur) | (r & x);      // twos
+      alive[i] = cur;
+      prev = cur;
+      cur = nxt;
+      i++;
+    }
+    // last word of the row wraps around to the first
+    var l2 = (cur << 1) | (prev >>> 15);
+    var r2 = (cur >>> 1) | (first << 15);
+    var x2 = l2 ^ cur;
+    h0[i + W] = x2 ^ r2;
+    h1[i + W] = (l2 & cur) | (r2 & x2);
+    alive[i] = cur;
+    i++;
+  }
+  // ghost rows: above row 0 sits row 191, below row 191 sits row 0
+  for (var w = 0; w < W; w++) {
+    h0[w] = h0[N + w];
+    h1[w] = h1[N + w];
+    h0[N + W + w] = h0[W + w];
+    h1[N + W + w] = h1[W + w];
+  }
+}
+
+fn vsum(dst) {
+  for (var i = 0; i < N; i++) {
+    var a0 = h0[i];                         // row above
+    var b0 = h0[i + W];                     // this row
+    var x = a0 ^ b0;
+    var k = a0 & b0;
+    var c0 = h0[i + 2 * W];                 // row below
+    var ones = x ^ c0;                      // ones bit of the 3x3 sum
+    k = k | (c0 & x);                       // carry into the twos
+    // twos = h1 above + h1 here + h1 below + k: need to know if it is 1 or 2
+    var a1 = h1[i];
+    var b1 = h1[i + W];
+    var s = a1 ^ b1;
+    var cy = a1 & b1;
+    var c1 = h1[i + 2 * W];
+    cy = cy | (c1 & s);
+    s = s ^ c1;                             // twos = s + 2 * cy + k
+    var t1 = (s ^ k) & ~cy;                 // twos == 1: block holds 2 or 3
+    var t2 = (s & k & ~cy) | (cy & ~(s | k)); // twos == 2: block holds 4 or 5
+    dst[i] = (ones & t1) | (alive[i] & t2 & ~ones);
+  }
+}
+
+// ---- patterns
+fn cell(buf, x, y) {
+  x = x & 255;
+  y = (y + H) % H;
+  var a = buf + y * W + (x >> 4);
+  mem[a] = mem[a] | (1 << (x & 15));
+}
+
+// draws a pattern given as rows of '.' and 'O' separated by '/'
+fn pattern(buf, x, y, s) {
+  var cx = x;
+  var i = 0;
+  while (s[i]) {
+    if (s[i] == 'O') { cell(buf, cx, y); }
+    if (s[i] == '/') { y++; cx = x; } else { cx++; }
+    i++;
+  }
+}
+
+fn gosper_gun(buf, x, y) {
+  pattern(buf, x, y,
+    "........................O/......................O.O/............OO......OO............OO/...........O...O....OO............OO/OO........O.....O...OO/OO........O...O.OO....O.O/..........O.....O.......O/...........O...O/............OO");
+}
+
+fn main() {
+  mono_mode();
+  randomize();
+  draw_to(BUF_A);
+  cls(0);
+  // glider guns on the left, a random soup on the right
+  for (var i = 0; i < 2500; i++) { cell(BUF_A, 136 + random(112), 8 + random(176)); }
+  gosper_gun(BUF_A, 4, 10);
+  gosper_gun(BUF_A, 4, 70);
+  pattern(BUF_A, 60, 160, ".O/..O/OOO");           // a glider
+  show(BUF_A);
+  var cur = BUF_A;
+  var nxt = BUF_B;
+  while (true) {
+    hsum(cur);
+    vsum(nxt);
+    show(nxt);
+    var t = cur;
+    cur = nxt;
+    nxt = t;
+  }
+}

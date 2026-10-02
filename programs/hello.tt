@@ -1,0 +1,11 @@
+// hello.tt — the first program.
+fn main() {
+  color_mode();
+  cls(NAVY);
+  text(4, 4, "HELLO FROM 6000 NAND GATES!", YELLOW);
+  for (var c = 0; c < 16; c++) { rect(4 + c * 7, 16, 6, 6, c); }
+  number(4, 30, 12345, WHITE);
+  number(40, 30, -32768, PINK);
+  number(80, 30, 42 * 42, LIME);
+  while (true) { wait_frame(); }
+}

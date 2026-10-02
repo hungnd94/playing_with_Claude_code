@@ -24,6 +24,7 @@ export const IO_MODE = 0xFFF0; // 0: 256x192 mono, 1: 128x96 16 colours
 export const IO_KEYS = 0xFFF1; // bitmask of held keys (written by the host)
 export const IO_FRAME = 0xFFF2; // frame counter (incremented by the host at 60 Hz)
 export const IO_RANDOM = 0xFFF3; // random word (refreshed by the host)
+export const IO_VBASE = 0xFFF4; // address of video memory (0 means SCREEN)
 export const KEY = { LEFT: 1, RIGHT: 2, UP: 4, DOWN: 8, FIRE: 16, ENTER: 32 };
 
 const s16 = (x) => (x << 16) >> 16;
