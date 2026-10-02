@@ -52,8 +52,8 @@ N16 executes one instruction per clock cycle. Instructions are 16 bits; an optio
 | 11 | jump | if `cond(ra)` then `pc = B`; `rd = return address` (so `jal` is free). Conditions: z nz lt ge le gt, always |
 
 `B` is register `rb`, or the literal when `L` is set. `r0` always reads zero. RAM and ROM are 64K words each.
-The display reads video memory from RAM (256×192 mono or 128×96 in 16 colours), and the keyboard, a 60 Hz
-frame counter and a random number appear at the top of RAM.
+The display reads video memory from RAM (256×192 mono or 128×96 in 16 colours). The keyboard, a 60 Hz frame
+counter, a random number and a square-wave tone generator sit at the top of RAM.
 
 Where the gates go:
 
@@ -104,7 +104,9 @@ biased colouring and cost-based spilling. On the Game of Life kernel it cut the 
 
 - **Tetris** (`tetris.tt`): the board is twenty 16-bit masks with the walls in the spare bits, so a collision
   test is one AND per row. The AI places each piece by trying every rotation and column. It scores the result
-  with aggregate height, holes, bumpiness and cleared lines, all from row masks and a popcount table.
+  with aggregate height, holes, bumpiness and cleared lines, all from row masks and a popcount table. It also
+  plays the Tetris theme (Korobeiniki): the melody is sequenced by the program and played through the tone
+  generator. Turn sound on in the page.
 - **Life** (`life.tt`): 256×192 on a torus, 16 cells per instruction. Two passes of bit-sliced adders compute
   the 3×3 population of every cell at once. Two Gosper glider guns fire into a random soup.
 - **Mandelbrot** (`mandel.tt`): 4.12 fixed point. Pre-shifting both operands makes `mulh` a fixed-point multiply,
@@ -134,6 +136,8 @@ npm test
   against a JavaScript reference (thousands of programs, some run on the gates).
 - **Programs**: each demo runs on the emulator and on the gates for 300,000 cycles and must leave identical RAM.
   Life is checked generation by generation against a reference implementation.
+- **In the page**: while you scroll past the bottom of the page, a second copy of the gate-level machine runs
+  random programs next to the specification and counts the differences (there are none).
 
 ## Running things
 

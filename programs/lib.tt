@@ -8,6 +8,7 @@ const IO_KEYS = 0xFFF1;    // held keys, bitmask of K_*
 const IO_FRAME = 0xFFF2;   // counts up 60 times a second
 const IO_RANDOM = 0xFFF3;  // a random word from the host
 const IO_VBASE = 0xFFF4;   // where the display reads video memory from
+const IO_SOUND = 0xFFF5;   // a square-wave tone, in Hz (0 is silence)
 
 const K_LEFT = 1;
 const K_RIGHT = 2;
@@ -62,6 +63,7 @@ fn random(n) { return (rand() >>> 1) % n; }
 fn color_mode() { mem[IO_MODE] = 1; }
 fn mono_mode() { mem[IO_MODE] = 0; }
 fn show(addr) { mem[IO_VBASE] = addr; }
+fn tone(hz) { mem[IO_SOUND] = hz; }
 fn draw_to(addr) { vram = addr; }
 
 fn cls(c) {

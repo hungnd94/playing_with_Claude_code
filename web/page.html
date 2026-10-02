@@ -175,6 +175,11 @@ table.tt tr.on td { color: var(--amber); }
 .stack li span:last-child { color: var(--muted); }
 .stack code { font-family: var(--mono); font-size: 12.5px; color: var(--fg); }
 .foot { color: var(--faint); font-size: 12.5px; margin: 0; }
+.verify { display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); font-size: 13.5px; color: var(--muted); }
+.verify b { color: var(--fg); font-family: var(--mono); font-weight: 500; font-variant-numeric: tabular-nums; }
+.verify .dot { flex: none; width: 8px; height: 8px; margin-top: 6px; border-radius: 50%; background: var(--faint); }
+.verify.live .dot { background: #7fc96b; box-shadow: 0 0 0 3px #7fc96b33; }
+.verify.bad .dot { background: var(--rose); }
 
 @media (max-width: 980px) {
   .masthead, .bench, .layers, .bottom { grid-template-columns: minmax(0, 1fr); }
@@ -222,7 +227,7 @@ table.tt tr.on td { color: var(--amber); }
             <button data-hz="2">2 Hz</button>
           </div>
         </div>
-        <button class="btn" id="reset">Reset</button>
+        <div class="seg"><button id="sound" aria-pressed="false" title="Play the tone generator through your speakers">Sound off</button><button id="reset">Reset</button></div>
       </div>
       <p class="blurb" id="blurb"></p>
       <div class="pad" id="pad" aria-label="Game keys">
@@ -284,7 +289,7 @@ table.tt tr.on td { color: var(--amber); }
     </article>
   </section>
 
-  <section class="bottom" aria-label="The NAND gate">
+  <section class="bottom" aria-label="The NAND gate" id="bottom">
     <div class="layer">
       <h2 class="depth"><i>6</i> The NAND gate <small>the bottom</small></h2>
       <p class="note">Its output is 0 only when both inputs are 1. That is the whole rule. The adders, the multiplier, the register file and every program above are this gate, repeated. Click the inputs.</p>
@@ -315,6 +320,10 @@ table.tt tr.on td { color: var(--amber); }
     <div class="layer">
       <h2 class="depth"><i>↑</i> Built in this page, bottom up <small id="boot-total"></small></h2>
       <ul class="stack" id="stack"></ul>
+      <div class="verify" id="verify" aria-live="off">
+        <span class="dot" id="v-dot"></span>
+        <div><b id="v-count">0</b> random instructions run on a second copy of the gates and on the behavioural specification, compared after every burst: <b id="v-progs">0</b> programs, <b id="v-diff">0</b> differences.</div>
+      </div>
       <p class="foot">The processor is checked cycle by cycle against a behavioural specification on random programs, and the compiler against a reference on thousands of random expressions. The flip-flops are simulated as primitives for speed; an 11-NAND flip-flop is proven equivalent in the test suite.</p>
     </div>
   </section>

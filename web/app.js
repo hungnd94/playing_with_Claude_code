@@ -6,7 +6,7 @@ import { buildWasm, WasmMachine, planBlocks, DEFAULT_BLOCKS } from '../src/wasm.
 import { Interpreter, FastMachine } from '../src/sim.js';
 import { build } from '../src/toolchain.js';
 import { loadImage } from '../src/asm.js';
-import { disassemble, decode, IO_FRAME, IO_KEYS, IO_RANDOM, IO_MODE } from '../src/isa.js';
+import { disassemble, decode, Emulator, IO_FRAME, IO_KEYS, IO_RANDOM, IO_MODE, IO_SOUND } from '../src/isa.js';
 import { render } from '../src/display.js';
 import { K_NAND, K_DFF, K_MEM } from '../src/hdl.js';
 import { PROGRAMS } from './programs.js';
@@ -85,6 +85,7 @@ async function boot() {
   }
   S.circuit = circuit;
   S.nl = nl;
+  S.bytes = bytes;
   S.machine = machine;
   S.interp = new Interpreter(nl, S.machine.mems);
   S.heat = new Float32Array(nl.size);
@@ -101,6 +102,7 @@ async function boot() {
   buildLegend();
   buildTabs();
   loadProgram(S.current);
+  startVerifier();
   await sleep(700);
   bootlog.classList.add('gone');
   S.last = performance.now();
@@ -281,6 +283,8 @@ function drawScreen() {
 
 function drawAll(force) {
   drawScreen();
+  updateSound();
+  verifyStep(1.5);
   die.draw(S.interp.v, S.heat);
   const now = performance.now();
   const slow = S.hz !== 0 && S.hz <= 100;
@@ -943,6 +947,93 @@ function fillStack(stats, nl, wasmBytes) {
     ['7', 'Programs', `a standard library with a pixel font, then Tetris with an AI (${fmt(tetris.image.romSize)} words), bit-sliced Life, fixed-point Mandelbrot`],
   ];
   $('stack').innerHTML = rows.map(([n, a, b]) => `<li><span class="n">${n}</span><b>${a}</b><span>${b}</span></li>`).join('');
+}
+
+// ------------------------------------------------------------------ sound
+let audio = null, osc = null, gain = null, lastTone = -1;
+function updateSound() {
+  if (!audio) return;
+  const f = S.running ? S.machine.mems.ram[IO_SOUND] : 0;
+  if (f === lastTone) return;
+  lastTone = f;
+  const t = audio.currentTime;
+  if (f >= 20 && f <= 8000) {
+    osc.frequency.setValueAtTime(f, t);
+    gain.gain.setTargetAtTime(0.045, t, 0.004);
+  } else gain.gain.setTargetAtTime(0, t, 0.008);
+}
+$('sound').addEventListener('click', () => {
+  const b = $('sound');
+  if (!audio) {
+    try {
+      audio = new (window.AudioContext || window.webkitAudioContext)();
+      osc = audio.createOscillator();
+      osc.type = 'square';
+      gain = audio.createGain();
+      gain.gain.value = 0;
+      osc.connect(gain).connect(audio.destination);
+      osc.start();
+    } catch (e) { b.textContent = 'No sound here'; return; }
+  }
+  const on = b.getAttribute('aria-pressed') !== 'true';
+  b.setAttribute('aria-pressed', String(on));
+  b.textContent = on ? 'Sound on' : 'Sound off';
+  if (on) { audio.resume(); lastTone = -1; } else { gain.gain.setTargetAtTime(0, audio.currentTime, 0.01); audio.suspend(); }
+});
+
+// ------------------------------------------------------------------ live verification
+// A second copy of the gate-level machine runs random programs next to the
+// behavioural emulator; they must agree after every burst of cycles.
+const V = { machine: null, emu: null, left: 0, checked: 0, programs: 0, diffs: 0, visible: false };
+async function startVerifier() {
+  try {
+    const { instance } = await WebAssembly.instantiate(S.bytes, {});
+    V.machine = new WasmMachine(S.nl, instance);
+  } catch (e) {
+    V.machine = new FastMachine(S.nl, planBlocks, DEFAULT_BLOCKS);
+  }
+  newVerifyProgram();
+  new IntersectionObserver((es) => { V.visible = es.some((e) => e.isIntersecting); }).observe($('verify'));
+}
+function newVerifyProgram() {
+  const rom = new Uint16Array(65536), ram = new Uint16Array(65536);
+  const edge = [0, 0, 1, 0x7fff, 0x8000, 0xffff, 15, 16];
+  for (let i = 0; i < 65536; i++) {
+    rom[i] = (Math.random() * 65536) | 0;
+    ram[i] = Math.random() < 0.3 ? edge[(Math.random() * edge.length) | 0] : (Math.random() * 65536) | 0;
+  }
+  V.emu = new Emulator(rom.slice(), ram.slice());
+  V.machine.reset();
+  V.machine.mems.rom.set(rom);
+  V.machine.mems.ram.set(ram);
+  V.left = 5000;
+}
+function verifyStep(ms) {
+  if (!V.machine || !V.visible) { $('verify').classList.remove('live'); return; }
+  const t0 = performance.now();
+  const { emu } = V;
+  while (performance.now() - t0 < ms) {
+    const n = 1 + ((Math.random() * 64) | 0);
+    for (let i = 0; i < n; i++) V.emu.step();
+    V.machine.run(n);
+    V.checked += n;
+    V.left -= n;
+    let same = V.machine.reg('pc') === V.emu.pc;
+    for (let r = 1; r < 8 && same; r++) same = V.machine.reg(`r${r}`) === V.emu.r[r];
+    if (V.left <= 0) {
+      const a = V.machine.mems.ram, b = V.emu.ram;
+      for (let i = 0; i < 65536 && same; i++) same = a[i] === b[i];
+      V.programs++;
+      newVerifyProgram();
+    }
+    if (!same) { V.diffs++; newVerifyProgram(); }
+  }
+  void emu;
+  $('verify').classList.add('live');
+  $('verify').classList.toggle('bad', V.diffs > 0);
+  $('v-count').textContent = fmt(V.checked);
+  $('v-progs').textContent = fmt(V.programs);
+  $('v-diff').textContent = fmt(V.diffs);
 }
 
 // ------------------------------------------------------------------ controls
