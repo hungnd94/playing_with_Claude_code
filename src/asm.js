@@ -175,7 +175,7 @@ export function assemble(source, { dataBase = DATA_BASE } = {}) {
       text = lm[2].trim();
     }
     if (!text) return;
-    const eq = /^([A-Za-z_][\w.$]*)\s*=\s*(.+)$/.exec(text);
+    const eq = /^([A-Za-z_.][\w.$]*)\s*=\s*(.+)$/.exec(text);
     if (eq) { items.push({ kind: 'equ', name: eq[1], expr: eq[2], line: ln }); return; }
 
     const sp = text.search(/\s/);

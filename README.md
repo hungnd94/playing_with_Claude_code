@@ -12,7 +12,9 @@ A computer built from nothing but NAND gates — and everything above it.
 - [x] **Verification** — the gate-level CPU is differentially tested against the ISA spec (`src/isa.js`)
       on random programs; a flip-flop built from 11 NANDs is shown to match the flip-flop primitive.
 - [x] **Assembler** — `src/asm.js`: two-pass, labels, constant expressions, pseudo-ops, RAM data section, source-line mapping.
-- [ ] Compiler
+- [x] **Compiler** — `src/compiler.js`: *Turtle*, a small C-like language (functions, recursion, arrays, strings,
+      short-circuit logic, signed division). Register-allocated locals, spilling, source maps. Fuzzed
+      against a JavaScript reference on thousands of random programs.
 - [ ] Programs
 - [ ] Browser front-end
 
