@@ -1098,6 +1098,13 @@ for (const b of $('pad').querySelectorAll('button')) {
   b.addEventListener('pointercancel', up);
 }
 
+// Escape zooms the die map out one level (unless typing somewhere)
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape' || !die || die.root.parent < 0) return;
+  if (e.target === bezel || e.target.tagName === 'TEXTAREA') return;
+  die.zoom(die.nodes[die.root.parent]);
+});
+
 // scrolling a code panel pauses auto-follow for a while
 $('src').addEventListener('wheel', () => { S.followUntil = performance.now() + 4000; }, { passive: true });
 $('asm').addEventListener('wheel', () => { S.asmFollowUntil = performance.now() + 4000; }, { passive: true });
