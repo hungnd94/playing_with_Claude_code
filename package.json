@@ -1,0 +1,12 @@
+{
+  "name": "all-the-way-down",
+  "version": "0.1.0",
+  "description": "A computer built from nothing but NAND gates: CPU, assembler, compiler and programs, simulated gate-by-gate.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "build": "node tools/build.js"
+  },
+  "license": "MIT"
+}
