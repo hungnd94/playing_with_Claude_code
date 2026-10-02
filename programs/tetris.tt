@@ -1,0 +1,356 @@
+// tetris.tt — falling blocks, with an AI that plays when you don't.
+//
+// Arrow keys move and rotate, down drops faster, space drops at once.
+// Press Enter (or any key) to take over from the AI.
+//
+// The board is 20 rows of 16-bit masks: bits 3..12 are the ten columns and
+// the other bits are walls, so collision tests are a single AND per row.
+
+const BW = 10;
+const BH = 20;
+const X0 = 44;            // board position on screen (pixels)
+const Y0 = 8;
+const WALL = 0xE007;      // an empty row: walls on both sides
+const FULL = 0xFFFF;      // a complete row
+const COLS = 0x1FF8;      // the ten playable columns
+
+// 7 pieces x 4 rotations, each a 4x4 mask: bit (row * 4 + col)
+var shapes[] = {
+  0x00F0, 0x4444, 0x0F00, 0x2222,   // I
+  0x0066, 0x0066, 0x0066, 0x0066,   // O
+  0x0072, 0x0262, 0x0270, 0x0232,   // T
+  0x0036, 0x0462, 0x0360, 0x0231,   // S
+  0x0063, 0x0264, 0x0630, 0x0132,   // Z
+  0x0071, 0x0226, 0x0470, 0x0322,   // J
+  0x0074, 0x0622, 0x0170, 0x0223    // L
+};
+var piece_color[] = { BLUE, YELLOW, PINK, LIME, RED, LAVENDER, ORANGE };
+
+var board[21];            // board[20] is the floor
+var colors[200];          // colour of every settled cell
+var shown[200];           // what is currently drawn, to redraw only changes
+var pop8[256];            // population count of a byte
+var tmp[21];              // scratch board for the AI
+var bag[7];
+var bag_left = 0;
+
+var cur_p = 0; var cur_r = 0; var cur_x = 0; var cur_y = 0;
+var next_p = 0;
+var score = 0; var lines = 0; var level = 0;
+var game_over = 0;
+var ai = 1;               // the computer is playing
+var ai_r = 0; var ai_x = 0;
+var prev_keys = 0;
+var held = 0;
+
+// ---------------------------------------------------------------- rules
+fn fits(p, r, x, y) {
+  var m = shapes[p * 4 + r];
+  var sh = x + 3;
+  for (var i = 0; i < 4; i++) {
+    var bits = ((m >>> (i * 4)) & 15) << sh;
+    if (bits) {
+      var row = WALL;
+      if (y + i >= 0) { row = board[y + i]; }
+      if (row & bits) { return 0; }
+    }
+  }
+  return 1;
+}
+
+fn next_from_bag() {
+  if (bag_left == 0) {
+    for (var i = 0; i < 7; i++) { bag[i] = i; }
+    for (var j = 6; j > 0; j--) {
+      var k = random(j + 1);
+      var t = bag[j]; bag[j] = bag[k]; bag[k] = t;
+    }
+    bag_left = 7;
+  }
+  bag_left--;
+  return bag[bag_left];
+}
+
+fn spawn() {
+  cur_p = next_p;
+  next_p = next_from_bag();
+  cur_r = 0;
+  cur_x = 3;
+  cur_y = -1;
+  if (!fits(cur_p, cur_r, cur_x, cur_y)) { game_over = 1; }
+  if (ai) { plan(); }
+}
+
+fn clear_lines() {
+  var n = 0;
+  var y = BH - 1;
+  while (y >= 0) {
+    if (board[y] == FULL) {
+      for (var k = y; k > 0; k--) {
+        board[k] = board[k - 1];
+        for (var c = 0; c < BW; c++) { colors[k * BW + c] = colors[(k - 1) * BW + c]; }
+      }
+      board[0] = WALL;
+      for (var c2 = 0; c2 < BW; c2++) { colors[c2] = BLACK; }
+      n++;
+    } else {
+      y--;
+    }
+  }
+  if (n) {
+    lines += n;
+    var gain = 10;
+    if (n == 2) { gain = 30; }
+    if (n == 3) { gain = 60; }
+    if (n == 4) { gain = 120; }
+    score += gain * (level + 1);
+    level = lines / 10;
+    if (level > 9) { level = 9; }
+  }
+}
+
+fn lock() {
+  var m = shapes[cur_p * 4 + cur_r];
+  for (var i = 0; i < 4; i++) {
+    var bits = (m >>> (i * 4)) & 15;
+    var y = cur_y + i;
+    if (bits && y >= 0) {
+      board[y] = board[y] | (bits << (cur_x + 3));
+      for (var c = 0; c < 4; c++) {
+        if ((bits >>> c) & 1) { colors[y * BW + cur_x + c] = piece_color[cur_p]; }
+      }
+    }
+  }
+  clear_lines();
+  spawn();
+}
+
+fn try_move(dx, dy) {
+  if (fits(cur_p, cur_r, cur_x + dx, cur_y + dy)) { cur_x += dx; cur_y += dy; return 1; }
+  return 0;
+}
+
+fn rotate() {
+  var r = (cur_r + 1) & 3;
+  // simple wall kicks: try in place, then one step either way, then two left
+  if (fits(cur_p, r, cur_x, cur_y)) { cur_r = r; return; }
+  if (fits(cur_p, r, cur_x - 1, cur_y)) { cur_r = r; cur_x--; return; }
+  if (fits(cur_p, r, cur_x + 1, cur_y)) { cur_r = r; cur_x++; return; }
+  if (fits(cur_p, r, cur_x - 2, cur_y)) { cur_r = r; cur_x -= 2; }
+}
+
+fn hard_drop() {
+  while (try_move(0, 1)) { score++; }
+  lock();
+}
+
+fn new_game() {
+  for (var y = 0; y < BH; y++) { board[y] = WALL; }
+  board[BH] = FULL;
+  for (var i = 0; i < 200; i++) { colors[i] = BLACK; }
+  score = 0; lines = 0; level = 0; game_over = 0;
+  bag_left = 0;
+  next_p = next_from_bag();
+  spawn();
+}
+
+// ---------------------------------------------------------------- the AI
+fn popcount(x) { return pop8[x & 255] + pop8[x >>> 8]; }
+
+// Score the board in tmp[] after placing a piece. Higher is better.
+// All features come from row masks: a column is "covered" at a row once a
+// block has appeared at or above it.
+fn evaluate_tmp() {
+  var cleared = 0;
+  var covered = 0;
+  var agg = 0;
+  var holes = 0;
+  var bump = 0;
+  for (var y = 0; y < BH; y++) {
+    var row = tmp[y];
+    if (row == FULL) { cleared++; } else {
+      row = row & COLS;
+      holes += popcount(covered & ~row);
+      covered = covered | row;
+      agg += popcount(covered);
+      bump += popcount((covered ^ (covered >>> 1)) & 0x0FF8);
+    }
+  }
+  // full rows were skipped above, so the features describe the board after
+  // the lines clear. Weights from Yiyuan Lee's "El-Tetris" (x100).
+  return 76 * cleared - 51 * agg - 36 * holes - 18 * bump;
+}
+
+fn plan() {
+  var best = -32768;
+  ai_r = 0; ai_x = cur_x;
+  var rots = 4;
+  if (cur_p == 1) { rots = 1; }
+  for (var r = 0; r < rots; r++) {
+    for (var x = -2; x < BW; x++) {
+      if (fits(cur_p, r, x, cur_y)) {
+        var y = cur_y;
+        while (fits(cur_p, r, x, y + 1)) { y++; }
+        for (var k = 0; k < BH; k++) { tmp[k] = board[k]; }
+        var m = shapes[cur_p * 4 + r];
+        for (var i = 0; i < 4; i++) {
+          if (y + i >= 0) { tmp[y + i] = tmp[y + i] | (((m >>> (i * 4)) & 15) << (x + 3)); }
+        }
+        var s = evaluate_tmp();
+        if (s > best) { best = s; ai_r = r; ai_x = x; }
+      }
+    }
+  }
+}
+
+fn ai_step() {
+  if (cur_r != ai_r) { rotate(); return; }
+  if (cur_x < ai_x) { if (!try_move(1, 0)) { hard_drop(); } return; }
+  if (cur_x > ai_x) { if (!try_move(-1, 0)) { hard_drop(); } return; }
+  if (!try_move(0, 1)) { lock(); }
+}
+
+// ---------------------------------------------------------------- drawing
+fn cell_words(c) {
+  // a 4x4 cell: three coloured pixels and a dark gap in each row
+  return c | (c << 4) | (c << 8);
+}
+
+fn draw_cell(x, y, c) {
+  var a = SCREEN + (Y0 + y * 4) * 32 + (X0 >> 2) + x;
+  var w = cell_words(c);
+  mem[a] = w;
+  mem[a + 32] = w;
+  mem[a + 64] = w;
+  var dot = 0;
+  if (c == BLACK) { dot = NAVY << 12; }   // faint grid dots on empty cells
+  mem[a + 96] = dot;
+}
+
+fn draw_piece_preview() {
+  var m = shapes[next_p * 4];
+  for (var i = 0; i < 4; i++) {
+    for (var c = 0; c < 4; c++) {
+      var col = BLACK;
+      if ((m >>> (i * 4 + c)) & 1) { col = piece_color[next_p]; }
+      var a = SCREEN + (20 + i * 4) * 32 + 23 + c;
+      var w = cell_words(col);
+      mem[a] = w; mem[a + 32] = w; mem[a + 64] = w; mem[a + 96] = 0;
+    }
+  }
+}
+
+fn draw_board() {
+  var m = shapes[cur_p * 4 + cur_r];
+  var pc = piece_color[cur_p];
+  for (var y = 0; y < BH; y++) {
+    var prow = 0;
+    var dy = y - cur_y;
+    if (dy >= 0 && dy < 4) { prow = (m >>> (dy * 4)) & 15; }
+    for (var x = 0; x < BW; x++) {
+      var i = y * BW + x;
+      var c = colors[i];
+      var dx = x - cur_x;
+      if (dx >= 0 && dx < 4 && ((prow >>> dx) & 1)) { c = pc; }
+      if (c != shown[i]) { draw_cell(x, y, c); shown[i] = c; }
+    }
+  }
+}
+
+fn panel_number(y, n) {
+  rect(92, y, 32, 5, BLACK);
+  number(92, y, n, WHITE);
+}
+
+fn draw_panel() {
+  panel_number(46, score);
+  panel_number(60, lines);
+  panel_number(74, level);
+}
+
+fn draw_frame() {
+  cls(BLACK);
+  rect(X0 - 2, Y0 - 2, BW * 4 + 3, 2, GREY);
+  rect(X0 - 2, Y0 + BH * 4, BW * 4 + 3, 2, GREY);
+  rect(X0 - 2, Y0, 2, BH * 4, GREY);
+  rect(X0 + BW * 4 - 1, Y0, 2, BH * 4, GREY);
+  text(4, 8, "TETRIS", YELLOW);
+  text(4, 18, "ON A CPU", SILVER);
+  text(4, 24, "MADE OF", SILVER);
+  text(4, 30, "NAND", SILVER);
+  text(4, 36, "GATES", SILVER);
+  text(92, 12, "NEXT", SILVER);
+  text(92, 40, "SCORE", SILVER);
+  text(92, 54, "LINES", SILVER);
+  text(92, 68, "LEVEL", SILVER);
+  for (var i = 0; i < 200; i++) { shown[i] = -1; }
+}
+
+fn draw_mode() {
+  rect(0, 50, 42, 30, BLACK);
+  if (ai) {
+    text(4, 52, "DEMO", LIME);
+    text(4, 60, "PRESS", GREY);
+    text(4, 66, "ENTER", GREY);
+    text(4, 72, "TO PLAY", GREY);
+  } else {
+    text(4, 52, "ARROWS", GREY);
+    text(4, 58, "SPACE", GREY);
+    text(4, 64, "= DROP", GREY);
+  }
+}
+
+// ---------------------------------------------------------------- main loop
+fn main() {
+  color_mode();
+  randomize();
+  for (var b = 0; b < 256; b++) { pop8[b] = (b & 1) + pop8[b >>> 1]; }
+  draw_frame();
+  new_game();
+  draw_mode();
+  var timer = 0;
+  var last_score = -1;
+  var last_next = -1;
+  while (true) {
+    var k = keys();
+    var pressed = k & ~prev_keys;
+    prev_keys = k;
+    if (ai && pressed) {
+      // a human arrives: start a fresh game for them
+      ai = 0;
+      new_game();
+      draw_mode();
+      pressed = 0;
+    }
+    if (game_over) {
+      text(X0 + 2, 40, "GAME OVER", WHITE);
+      wait_frames(90);
+      if (!ai) { ai = 1; }
+      draw_frame();
+      new_game();
+      draw_mode();
+      last_score = -1; last_next = -1;
+    }
+    if (ai) {
+      timer++;
+      if (timer >= 3) { timer = 0; ai_step(); }
+    } else {
+      if (pressed & K_UP) { rotate(); }
+      if (pressed & K_FIRE) { hard_drop(); }
+      if (k & (K_LEFT | K_RIGHT | K_DOWN)) { held++; } else { held = 0; }
+      var rep = held == 1 || (held > 10 && (held & 1));
+      if (rep && (k & K_LEFT)) { try_move(-1, 0); }
+      if (rep && (k & K_RIGHT)) { try_move(1, 0); }
+      if ((k & K_DOWN) && (held & 1)) { if (try_move(0, 1)) { score++; } }
+      timer++;
+      if (timer >= 30 - level * 3) {
+        timer = 0;
+        if (!try_move(0, 1)) { lock(); }
+      }
+    }
+    draw_board();
+    if (score != last_score) { draw_panel(); last_score = score; }
+    if (next_p != last_next) { draw_piece_preview(); last_next = next_p; }
+    wait_frame();
+  }
+}
